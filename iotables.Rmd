@@ -1,0 +1,112 @@
+---
+title: "IO"
+output:
+---
+
+```{r setup}
+pacman::p_load(tidyverse,
+               iotables)
+
+Functions$Technology_coefficients <- function(x) {
+  x %>%
+    select(-f) %>%
+    filter(Buyer != "f") %>%
+    add_row(.[nrow(.),]) %>%
+    mutate(Buyer =
+           case_when(
+             row_number(.) < nrow(.) ~ Buyer,
+             T ~ "output"
+           )) %>%
+  input_coefficient_matrix_create()
+}
+
+Functions$create_Leontief <- function(x){
+  x %>%
+    Functions$Technology_coefficients() %>%
+    leontief_matrix_create()
+}
+
+Functions$create_inv_Leontief <- function(x){
+  x %>%
+    Functions$Technology_coefficients() %>%
+    leontief_inverse_create()
+}
+
+Functions$create_inv_Ghosh <- function(x){
+  x %>%
+    select(-f) %>%
+    filter(Buyer != "f") %>%
+    add_row(.[nrow(.),]) %>%
+    mutate(Buyer =
+           case_when(
+             row_number(.) < nrow(.) ~ Buyer,
+             T ~ "output"
+           )) %>%
+  input_coefficient_matrix_create() %>%
+    ghosh_inverse_create()
+}
+
+
+```
+
+Technology Coefficients
+
+```{r}
+ecosys_matrices$FRA2018 %>%
+  Functions$Technology_coefficients() %>%
+  View()
+```
+
+Leontief
+```{r}
+ecosys_matrices$FRA2018 %>%
+  Functions$create_Leontief()
+```
+
+Inv. Leontief
+```{r}
+ecosys_matrices$FRA2018 %>%
+  Functions$create_inv_Leontief() %>%
+  View()
+```
+
+Inv. Ghosh
+```{r}
+ecosys_matrices$FRA2018 %>%
+  Functions$create_inv_Ghosh() %>%
+  View()
+```
+
+
+
+
+
+```{r}
+tibble(
+  Buyer = c("A","B","C"),
+  A = rnorm(3),
+  B= rnorm(3),
+  C= rnorm(3),
+) %>%
+  janitor:: iotables::output_coefficient_matrix_create(total = "total") %>%
+  leontief_matrix_create() -> pregosh
+as.matrix(pregosh[, 2:ncol(pregosh)]) %>% solve()
+
+
+%>%
+  ghosh_inverse_create()
+
+matrix(c(1,2,2,1),
+       ,nrow=2,ncol=2) %>%
+  solve()
+
+```
+
+
+
+```{r}
+iotables::forward_linkages(iotables::germany_1995)
+
+ecosys_matrices$FRA2018$`Aerospace & Defence`
+```
+

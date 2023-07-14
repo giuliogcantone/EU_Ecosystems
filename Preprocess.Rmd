@@ -1,0 +1,296 @@
+---
+title: "Preprocess"
+output:
+---
+
+```{r setup}
+pacman::p_load(tidyverse,janitor,readxl,writexl)
+
+Functions = list()
+
+# Functions
+Functions$pivot_transpose <- function(
+        data,
+        cols_to_wide = 1,
+        cols_to_long = 2:last_col(),
+        names_to = "name",
+        .drop = TRUE
+) {
+    
+    cols_to_long_expr <- enquos(cols_to_long)
+    cols_to_wide_expr <- enquos(cols_to_wide)
+    
+    # drop unused columns
+    data_select <- data
+    if (.drop) {
+        data_select <- data_select %>%
+            select(!!! cols_to_wide_expr, !!! cols_to_long_expr)
+    }
+    
+    data_select %>%
+        pivot_longer(
+            cols      = (!!! cols_to_long_expr),
+            values_to = "...value",
+            names_to  = names_to
+        ) %>%
+        pivot_wider(
+            names_from  = (!!! cols_to_wide_expr),
+            values_from = ...value
+        )
+    
+}
+
+Functions$matrix_preprocess <- function(matrix) {
+  matrix %>%
+    rename_with(~str_remove(.x,"CPA_")) %>%
+    rename_with(~str_replace(.x,"-|_",":")) %>%
+    rename_with(~str_replace(.x,"VL","L")) %>%
+    mutate(Buyer = `...1` %>%
+             str_remove("CPA_") %>%
+             str_replace("-|_",":") %>%
+             str_replace("VL","L"),
+           .before = `...1`
+           ) %>%
+    select(-`...1`)
+}
+
+Functions$generate_ecosystems <- function(
+        matrix
+) {matrix %>%
+  transmute(
+    Buyer = Buyer,
+    aerospace_defence =
+      `C25` *.03 +
+      `C26` *.44 +
+      `C27` *.23 +
+      `C30` *.68 +
+      `C33` *.09 +
+      `H51` *.09 +
+      `H52` *.18 +
+      `J61` *.07 +
+      `N80:82` * .33 +
+    #
+      `C25` * .0674 +
+      `C33` * .0776,
+    agri_food =
+      `A01` +
+      `A02` +
+      `A03` +
+      `C10:12`,
+    construction =
+      `C31:32`*5 +
+      `F` +
+      `M71` +
+      `N80:82` *.33 +
+    #
+      `M71` * .2568,
+    culture =
+      `C18` +
+      `G47` * .01 +
+      `J58` +
+      `J59:60` +
+      `J62:63` * .004 +
+      `M71` * 0.15 +
+      `M73`+
+      `M74:75` * .64 +
+      `N77` * .0006 +
+      `P` * .1 +
+      `R90:92` *.8 +
+      `S94` * .02 +
+      `S95` * .26 +
+    #
+      `M71` * .0203 +
+      `N77` * .0285,
+    digital =
+      `C26` * .22+
+      `J58` +
+      `J61` * .97 +
+      `J62:63` +
+      `S95` * .48,
+    electronics =
+      `C26` +
+      `C28` *.1 +
+      #
+      `C28` * .226,
+    energy =
+      `C27` * .38 +
+      `D` * .29,
+    intensive =
+      `C16` +
+      `C17` +
+      `C19` +
+      `C20` +
+      `C22` +
+      `C23` +
+      `C24`,
+    health =
+      `C21` +
+      `Q86` +
+      `Q87:88`,
+    transport =
+      `C27` * .03 +
+      `C29` +
+      `C30` +
+      `G45` +
+      `H49` * .52 +
+      `H50` * .78 +
+      `H52` * .39,
+    social_economy =
+      `G47` * .16 +
+      `I` * .14 +
+      `L` * .08 +
+      `N80:82` * .66 * .39 +
+      `Q87:88` +
+      `S95`+
+      `S96`,
+    retail =
+      `G46` +
+      `G47` +
+      `H53`,
+    textile =
+      `C13:15`,
+    tourism =
+      `H49` * .45 +
+      `H50` * .22 +
+      `H51` * .91 +
+      `I` +
+      `N79` +
+      `N80:82` * .33 +
+      `R90:92` * .66 +
+      `R93`,
+  ) %>%
+  Functions$pivot_transpose(names_to = "Seller") %>%
+  transmute(
+    Seller = Seller,
+    aerospace_defence =
+      `C25` *.03 +
+      `C26` *.44 +
+      `C27` *.23 +
+      `C30` *.68 +
+      `C33` *.09 +
+      `H51` *.09 +
+      `H52` *.18 +
+      `J61` *.07 +
+      `N80:82` * .33 +
+    #
+      `C25` * .0674 +
+      `C33` * .0776,
+    agri_food =
+      `A01` +
+      `A02` +
+      `A03` +
+      `C10:12`,
+    construction =
+      `C31:32`*5 +
+      `F` +
+      `M71` +
+      `N80:82` *.33 +
+    #
+      `M71` * .2568,
+    culture =
+      `C18` +
+      `G47` * .01 +
+      `J58` +
+      `J59:60` +
+      `J62:63` * .004 +
+      `M71` * 0.15 +
+      `M73`+
+      `M74:75` * .64 +
+      `N77` * .0006 +
+      `P` * .1 +
+      `R90:92` *.8 +
+      `S94` * .02 +
+      `S95` * .26 +
+    #
+      `M71` * .0203 +
+      `N77` * .0285,
+    digital =
+      `C26` * .22+
+      `J58` +
+      `J61` * .97 +
+      `J62:63` +
+      `S95` * .48,
+    electronics =
+      `C26` +
+      `C28` *.1 +
+      #
+      `C28` * .226,
+    energy =
+      `C27` * .38 +
+      `D` * .29,
+    intensive =
+      `C16` +
+      `C17` +
+      `C19` +
+      `C20` +
+      `C22` +
+      `C23` +
+      `C24`,
+    health =
+      `C21` +
+      `Q86` +
+      `Q87:88`,
+    transport =
+      `C27` * .03 +
+      `C29` +
+      `C30` +
+      `G45` +
+      `H49` * .52 +
+      `H50` * .78 +
+      `H52` * .39,
+    social_economy =
+      `G47` * .16 +
+      `I` * .14 +
+      `L` * .08 +
+      `N80:82` * .66 * .39 +
+      `Q87:88` +
+      `S95`+
+      `S96`,
+    retail =
+      `G46` +
+      `G47` +
+      `H53`,
+    textile =
+      `C13:15`,
+    tourism =
+      `H49` * .45 +
+      `H50` * .22 +
+      `H51` * .91 +
+      `I` +
+      `N79` +
+      `N80:82` * .33 +
+      `R90:92` * .66 +
+      `R93`) %>%
+    adorn_totals(where = c("row", "col")) %>%
+    add_column(f = adorn_percentages(.,"col")["Total"] %>% pull()) %>%
+    Functions$pivot_transpose(names_to = "Buyer") %>%
+    mutate(f = Total/max(Total)) %>%
+    rename(total = Total) %>%
+    mutate(Buyer =
+             case_when(
+               Buyer != "Total" ~ Buyer,
+               T ~ "total"
+             )) %>%
+    adorn_rounding(2)
+}
+
+```
+
+```{r}
+ecosys_matrices = list()
+
+ecosys_matrices$FRA2015 <- read_excel("Francia 2015-2018.xlsx", 
+    sheet = "2015") %>% Functions$matrix_preprocess() %>% Functions$generate_ecosystems()
+ecosys_matrices$FRA2018 <- read_excel("Francia 2015-2018.xlsx", 
+    sheet = "2018") %>% Functions$matrix_preprocess() %>% Functions$generate_ecosystems()
+
+ecosys_matrices$GER2015 <- read_excel("germania 2015-2018.xlsx", 
+    sheet = "2015") %>% Functions$matrix_preprocess() %>% Functions$generate_ecosystems()
+ecosys_matrices$GER2018 <- read_excel("germania 2015-2018.xlsx", 
+    sheet = "2018") %>% Functions$matrix_preprocess() %>% Functions$generate_ecosystems()
+
+ecosys_matrices$ITA2015 <- read_excel("germania 2015-2018.xlsx", 
+    sheet = "2015") %>% Functions$matrix_preprocess() %>% Functions$generate_ecosystems()
+ecosys_matrices$ITA2018 <- read_excel("germania 2015-2018.xlsx", 
+    sheet = "2018") %>% Functions$matrix_preprocess() %>% Functions$generate_ecosystems()
+```
