@@ -1,0 +1,256 @@
+---
+title: "Analysis"
+format: pdf
+editor: visual
+---
+
+## Setup
+
+```{r setup}
+Functions = list()
+db = list()
+
+pacman::p_load(tidyverse,janitor,readxl,writexl,diverse,glue)
+
+Functions$matrix_preprocess <- function(matrix) {
+  matrix %>%
+    rename_with(~str_remove(.x,"CPA_")) %>%
+    rename_with(~str_replace(.x,"-|_","-")) %>%
+    rename_with(~str_replace(.x,"VL","L")) %>%
+    mutate(Buyer = `...1` %>%
+             str_remove("CPA_") %>%
+             str_replace("-|_","-") %>%
+             str_replace("VL","L"),
+           .before = `...1`
+           ) %>%
+    select(-`...1`) %>%
+    pivot_longer(cols = 2:last_col(),
+               names_to = "Seller",
+               values_to = "value") %>%
+    mutate(
+  Buyer = ifelse(Buyer %>% str_detect("A"),
+                 "A",
+                 Buyer),
+  Seller = ifelse(Seller %>% str_detect("A"),
+                 "A",
+                 Seller)
+) %>%
+  summarise(value = sum(value),
+            .by = c(Buyer, Seller))
+}
+
+Functions$diversity <- function(db,entity,trait,value,d_matrix){
+  db %>%
+summarize(crossed = list(crossing(trait, trait)),
+          .by = entity) %>%
+  unnest(crossed) %>%
+  rename(
+    i = trait...1,
+    j = trait...2
+  ) %>%
+  left_join(db %>% transmute(
+      entity,
+      i = trait,
+      p_i = value
+    )
+  ) %>%
+    left_join(db %>% transmute(
+      entity,
+      j = trait,
+      p_j = value
+    )
+  ) %>%
+  mutate(d = map2_dbl(i,j,~1 - d_matrix[.y, .x])) %>%
+  summarise(.by = entity,
+            RS = sum(p_i * p_j * d),
+            True_RS = 1 / (1 - RS))
+}
+```
+
+## Import data
+
+```{r}
+codex <- read_excel("Codex.xlsx")
+
+db_ATECO <- read_excel("italia 2015-2018.xlsx", 
+    sheet = "2015") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "Italy",
+         Year = "2015") %>%
+  add_row(read_excel("italia 2015-2018.xlsx", 
+    sheet = "2018") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "Italy",
+         Year = "2018")) %>%
+  add_row(read_excel("germania 2015-2018.xlsx", 
+    sheet = "2015") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "Germany",
+         Year = "2015")) %>%
+  add_row(read_excel("germania 2015-2018.xlsx", 
+    sheet = "2018") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "Germany",
+         Year = "2018")) %>%
+  add_row(read_excel("Francia 2015-2018.xlsx", 
+    sheet = "2015") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "France",
+         Year = "2015"))%>%
+  add_row(read_excel("Francia 2015-2018.xlsx", 
+    sheet = "2018") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "France",
+         Year = "2018"))
+
+db_ECOS <- expand.grid(Buyer = codex$ATECO,Seller = codex$ATECO) %>%
+  left_join(db_ATECO) %>%
+  left_join(codex %>%
+              transmute(Buyer = ATECO,
+                        ECOS_Buyer = Ecosystem,
+                        w_Buyer = w)) %>%
+  left_join(codex %>%
+              transmute(Seller = ATECO,
+                        ECOS_Seller = Ecosystem,
+                        w_Seller = w)) %>%
+  transmute(Buyer = ECOS_Buyer,
+            Seller = ECOS_Seller,
+            value,
+            w_Buyer,
+            w_Seller,
+            Year,
+            Country) %>%
+  summarise(.by = c(Buyer, Seller, Year, Country),
+            value = sum(value*w_Buyer*w_Seller))
+```
+
+## Diversity
+
+```{r}
+db_ECOS %>%
+  select(Buyer,Seller,value) %>%
+  summarise(.by = c(Buyer, Seller),
+            value = sum(value)) %>%
+  pivot_wider(names_from = Seller,
+              values_from = value) %>%
+  column_to_rownames("Buyer") %>%
+  as.matrix() %>%
+  dist(method = "cosine", by_rows = T,
+       diag = T, upper = T) %>%
+  as.matrix() -> d
+
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  mutate(p_Seller = value/sum(value),
+         .by = Buyer) %>%
+  Functions$diversity(.,"Buyer","Seller","p_Seller,d)
+  
+```
+
+```{r}
+Functions$diversity <- function(db,entity,trait,v,d_matrix){
+  db %>%
+summarize(crossed = list(crossing(trait, trait)),
+          .by = entity) %>%
+  unnest(crossed) %>%
+  rename(
+    i = trait...1,
+    j = trait...2
+  ) %>%
+  left_join(db %>% transmute(
+      entity,
+      i = trait,
+      p_i = v
+    )
+  ) %>%
+    left_join(db %>% transmute(
+      entity,
+      j = trait,
+      p_j = v
+    )
+  )
+}
+```
+
+Extended diversity
+
+```{r}
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  mutate(p_Seller = value/sum(value),
+         .by = Buyer) %>%
+summarize(crossed = list(crossing(Seller, Seller)),
+          .by = Buyer) %>%
+  unnest(crossed) %>%
+  rename(
+    i = Seller...1,
+    j = Seller...2
+  ) %>%
+  left_join(
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  mutate(p_Seller = value/sum(value),
+         .by = Buyer) %>% transmute(
+      Buyer,
+      i = Seller,
+      p_i = p_Seller
+    )
+  ) %>%
+    left_join(
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  mutate(p_Seller = value/sum(value),
+         .by = Buyer) %>% transmute(
+      Buyer,
+      j = Seller,
+      p_j = p_Seller,
+    )
+  ) %>%
+  mutate(d = map2_dbl(i,j,~1 - d[.y, .x])) %>%
+  summarise(.by = Buyer,
+            RS = sum(p_i * p_j * d),
+            True_RS = 1 / (1 - RS))
+
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  mutate(p_Seller = value/sum(value),
+         .by = Seller) %>%
+summarize(crossed = list(crossing(Buyer, Buyer)),
+          .by = Seller) %>%
+  unnest(crossed) %>%
+  rename(
+    i = Buyer...1,
+    j = Buyer...2
+  ) %>%
+  left_join(
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  mutate(p_Buyer = value/sum(value),
+         .by = Seller) %>% transmute(
+      Seller,
+      i = Buyer,
+      p_i = p_Buyer
+    )
+  ) %>%
+    left_join(
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  mutate(p_Buyer = value/sum(value),
+         .by = Seller) %>% transmute(
+      Seller,
+      j = Buyer,
+      p_j = p_Buyer,
+    )
+  ) %>%
+  mutate(d = map2_dbl(i,j,~1 - d[.y, .x])) %>%
+  summarise(.by = Seller,
+            RS = sum(p_i * p_j * d),
+            True_RS = 1 / (1 - RS))
+```
