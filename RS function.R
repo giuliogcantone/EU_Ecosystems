@@ -8,6 +8,10 @@ library(tidyverse)
 
 f <- function(db, entity, trait, value, d_matrix) {
   {{ db }} %>%
+    mutate({{ value }} := {{ value }} / sum({{ value }}),
+           .by = {{ entity }}) -> db_p
+
+  db_p %>%
     reframe(i = expand.grid({{ trait }},{{ trait }}),
             .by = {{ entity }}) %>%
     unnest(i) %>%
@@ -15,21 +19,43 @@ f <- function(db, entity, trait, value, d_matrix) {
       i = Var1,
       j = Var2,
     ) %>%
-    left_join({{ db }} %>% transmute(
+    left_join(
+      db_p %>% transmute(
       {{ entity }},
       i = {{ trait }},
       p_i = {{ value }}
-    )
-    ) %>%
-    left_join({{ db }} %>% transmute(
+    )) %>%
+    left_join(
+      db_p %>% transmute(
       {{ entity }},
       j = {{ trait }},
       p_j = {{ value }}
-    )
-    ) %>%
+    )) %>%
     mutate(d = map2_dbl(i,j,~{{ d_matrix }}[.y, .x])) %>%
     summarise(.by = {{ entity }},
               RS = sum(p_i * p_j * d),
               True_RS = 1 / (1 - RS)
     )
 }
+
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  f(Buyer,Seller,value,d_ECOS)
+
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  f(Seller,Buyer,value,d_ECOS)
+
+
+db_ECOS %>%
+  filter(Country == "Italy",
+         Year == "2018") %>%
+  f(Buyer,Seller,value,d_ECOS)
+
+db_ATECO %>%
+  filter(Country == "Italy",
+         Year == "2015") %>%
+  f(Buyer,Seller,value,d_ATECO)
+

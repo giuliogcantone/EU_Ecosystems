@@ -137,40 +137,21 @@ db_ECOS %>%
   as.matrix() %>%
   dist(method = "cosine", by_rows = T,
        diag = T, upper = T) %>%
-  as.matrix() -> d
+  data.matrix() -> d_ECOS
+writexl::write_xlsx(d_ECOS %>% as_tibble(rownames = "Ecosystem"),"dist_ECOS.xlsx")
 
-db_ECOS %>%
-  filter(Country == "Italy",
-         Year == "2015") %>%
-  mutate(p_Seller = value/sum(value),
-         .by = Buyer) %>%
-  Functions$diversity(.,"Buyer","Seller","p_Seller,d)
-  
-```
-
-```{r}
-Functions$diversity <- function(db,entity,trait,v,d_matrix){
-  db %>%
-summarize(crossed = list(crossing(trait, trait)),
-          .by = entity) %>%
-  unnest(crossed) %>%
-  rename(
-    i = trait...1,
-    j = trait...2
-  ) %>%
-  left_join(db %>% transmute(
-      entity,
-      i = trait,
-      p_i = v
-    )
-  ) %>%
-    left_join(db %>% transmute(
-      entity,
-      j = trait,
-      p_j = v
-    )
-  )
-}
+db_ATECO %>%
+  select(Buyer,Seller,value) %>%
+  summarise(.by = c(Buyer, Seller),
+            value = sum(value)) %>%
+  pivot_wider(names_from = Seller,
+              values_from = value) %>%
+  column_to_rownames("Buyer") %>%
+  data.matrix() %>%
+  dist(method = "cosine", by_rows = T,
+       diag = T, upper = T) %>%
+  as.matrix() -> d_ATECO
+writexl::write_xlsx(d_ATECO %>% as_tibble(rownames = "ATECO"),"dist_ATECO.xlsx")
 ```
 
 Extended diversity
@@ -252,5 +233,5 @@ db_ECOS %>%
   mutate(d = map2_dbl(i,j,~1 - d[.y, .x])) %>%
   summarise(.by = Seller,
             RS = sum(p_i * p_j * d),
-            True_RS = 1 / (1 - RS))
+            True_RS = 1 / (1 - RS)) %>% View()
 ```
