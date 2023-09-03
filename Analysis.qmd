@@ -8,7 +8,6 @@ editor: visual
 
 ```{r setup}
 Functions = list()
-db = list()
 
 pacman::p_load(tidyverse,janitor,readxl,writexl,diverse,glue)
 
@@ -40,36 +39,43 @@ Functions$matrix_preprocess <- function(matrix) {
 }
 
 Functions$diversity <- function(db,entity,trait,value,d_matrix){
-  db %>%
-summarize(crossed = list(crossing(trait, trait)),
-          .by = entity) %>%
-  unnest(crossed) %>%
-  rename(
-    i = trait...1,
-    j = trait...2
-  ) %>%
-  left_join(db %>% transmute(
-      entity,
-      i = trait,
-      p_i = value
+  {{ db }} %>%
+    mutate({{ value }} := {{ value }} / sum({{ value }}),
+           .by = {{ entity }}) -> db_p
+
+  db_p %>%
+    reframe(i = expand.grid({{ trait }},{{ trait }}),
+            .by = {{ entity }}) %>%
+    unnest(i) %>%
+    rename(
+      i = Var1,
+      j = Var2,
+    ) %>%
+    left_join(
+      db_p %>% transmute(
+      {{ entity }},
+      i = {{ trait }},
+      p_i = {{ value }}
+    )) %>%
+    left_join(
+      db_p %>% transmute(
+      {{ entity }},
+      j = {{ trait }},
+      p_j = {{ value }}
+    )) %>%
+    mutate(d = map2_dbl(i,j,~{{ d_matrix }}[.y, .x])) %>%
+    summarise(.by = {{ entity }},
+              RS = sum(p_i * p_j * d),
+              True_RS = 1 / (1 - RS)
     )
-  ) %>%
-    left_join(db %>% transmute(
-      entity,
-      j = trait,
-      p_j = value
-    )
-  ) %>%
-  mutate(d = map2_dbl(i,j,~1 - d_matrix[.y, .x])) %>%
-  summarise(.by = entity,
-            RS = sum(p_i * p_j * d),
-            True_RS = 1 / (1 - RS))
+  
 }
 ```
 
 ## Import data
 
 ```{r}
+results = list()
 codex <- read_excel("Codex.xlsx")
 
 db_ATECO <- read_excel("italia 2015-2018.xlsx", 
@@ -124,7 +130,7 @@ db_ECOS <- expand.grid(Buyer = codex$ATECO,Seller = codex$ATECO) %>%
             value = sum(value*w_Buyer*w_Seller))
 ```
 
-## Diversity
+## Disparity matrix
 
 ```{r}
 db_ECOS %>%
@@ -137,7 +143,7 @@ db_ECOS %>%
   as.matrix() %>%
   dist(method = "cosine", by_rows = T,
        diag = T, upper = T) %>%
-  data.matrix() -> d_ECOS
+  as.matrix() -> d_ECOS
 writexl::write_xlsx(d_ECOS %>% as_tibble(rownames = "Ecosystem"),"dist_ECOS.xlsx")
 
 db_ATECO %>%
@@ -154,84 +160,66 @@ db_ATECO %>%
 writexl::write_xlsx(d_ATECO %>% as_tibble(rownames = "ATECO"),"dist_ATECO.xlsx")
 ```
 
-Extended diversity
+## Automated tables: Selling
 
 ```{r}
-db_ECOS %>%
-  filter(Country == "Italy",
-         Year == "2015") %>%
-  mutate(p_Seller = value/sum(value),
-         .by = Buyer) %>%
-summarize(crossed = list(crossing(Seller, Seller)),
-          .by = Buyer) %>%
-  unnest(crossed) %>%
-  rename(
-    i = Seller...1,
-    j = Seller...2
-  ) %>%
-  left_join(
-db_ECOS %>%
-  filter(Country == "Italy",
-         Year == "2015") %>%
-  mutate(p_Seller = value/sum(value),
-         .by = Buyer) %>% transmute(
-      Buyer,
-      i = Seller,
-      p_i = p_Seller
-    )
-  ) %>%
-    left_join(
-db_ECOS %>%
-  filter(Country == "Italy",
-         Year == "2015") %>%
-  mutate(p_Seller = value/sum(value),
-         .by = Buyer) %>% transmute(
-      Buyer,
-      j = Seller,
-      p_j = p_Seller,
-    )
-  ) %>%
-  mutate(d = map2_dbl(i,j,~1 - d[.y, .x])) %>%
-  summarise(.by = Buyer,
-            RS = sum(p_i * p_j * d),
-            True_RS = 1 / (1 - RS))
 
-db_ECOS %>%
-  filter(Country == "Italy",
-         Year == "2015") %>%
-  mutate(p_Seller = value/sum(value),
-         .by = Seller) %>%
-summarize(crossed = list(crossing(Buyer, Buyer)),
-          .by = Seller) %>%
-  unnest(crossed) %>%
-  rename(
-    i = Buyer...1,
-    j = Buyer...2
-  ) %>%
-  left_join(
-db_ECOS %>%
-  filter(Country == "Italy",
-         Year == "2015") %>%
-  mutate(p_Buyer = value/sum(value),
-         .by = Seller) %>% transmute(
-      Seller,
-      i = Buyer,
-      p_i = p_Buyer
-    )
-  ) %>%
-    left_join(
-db_ECOS %>%
-  filter(Country == "Italy",
-         Year == "2015") %>%
-  mutate(p_Buyer = value/sum(value),
-         .by = Seller) %>% transmute(
-      Seller,
-      j = Buyer,
-      p_j = p_Buyer,
-    )
-  ) %>%
-  mutate(d = map2_dbl(i,j,~1 - d[.y, .x])) %>%
-  summarise(.by = Seller,
-            RS = sum(p_i * p_j * d),
-            True_RS = 1 / (1 - RS)) %>% View()
+results$Seller_div = tibble(
+  Year = NA,
+  Country = NA,
+  Seller = NA,
+  RS = NA,
+  True_RS = NA
+)
+
+for (Y in db_ECOS$Year %>% unique) {
+  for (G in db_ECOS$Country %>% unique) {
+    
+    db_ECOS %>%
+      filter(Year == Y,
+             Country == G
+             ) %>%
+      Functions$diversity(Seller,Buyer,value,d_ECOS) %>%
+      add_column(Year = Y,
+                 Country = G) %>%
+      add_row(results$Seller_div,.) -> results$Seller_div
+  }
+}
+
+results$Seller_div %>%
+  drop_na() %>%
+  select(-RS) %>%
+  write_xlsx("Seller_Diversity.xlsx")
+```
+
+## Automated tables: Selling
+
+```{r}
+
+results$Buyer_div = tibble(
+  Year = NA,
+  Country = NA,
+  Buyer = NA,
+  RS = NA,
+  True_RS = NA
+)
+
+for (Y in db_ECOS$Year %>% unique) {
+  for (G in db_ECOS$Country %>% unique) {
+    
+    db_ECOS %>%
+      filter(Year == Y,
+             Country == G
+             ) %>%
+      Functions$diversity(Buyer,Seller,value,d_ECOS) %>%
+      add_column(Year = Y,
+                 Country = G) %>%
+      add_row(results$Buyer_div,.) -> results$Buyer_div
+  }
+}
+
+results$Buyer_div %>%
+  drop_na() %>%
+  select(-RS) %>%
+  write_xlsx("Buyer_Diversity.xlsx")
 ```
