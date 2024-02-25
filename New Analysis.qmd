@@ -1,0 +1,468 @@
+---
+title: "Untitled"
+format: pdf
+editor: visual
+---
+
+## Methods
+
+Eurostat develops I-O matrices at basic prices (product by product). The structure of IES derives from an aggregation of NACE classification.
+
+IES is then represented as a $X: \{x_{i,j}\}$ I-O matrix; $x_{i,j}$ is how much system $i$ sold to system $j$.
+
+FIGURE
+
+$x_{i,j}$ can be normalised into a proportion through the columns:
+
+$$
+    a_{i,j} = \frac{x_{i,j}}{\sum\limits_{j} x_{i,j}}
+$$ {#eq-a}
+
+where $\sum\limits_{j} x_{i,j}$ is the sum of the row of $x_{i,j}$; or through the rows:
+
+$$
+    b_{i,j} = \frac{x_{i,j}}{\sum\limits_{i} x_{i,j}}
+$$ {#eq-b}
+
+where $\sum\limits_{i} x_{i,j}$ is the sum of the column of $x_{i,j}$.
+
+$a_{i,j}$ is the proportion of how much $j$ buys from $i$ compared to other $i$-sellers. $b_{i,j}$ is the proportion of how much $i$ sells to $j$ among the $j$-buyers of $i$.
+
+From $a_{i,j}$ and $b_{i,j}$ can be derived
+
+$$
+w_{i,j} = \frac{
+    a_{i,j} + b_{i,j} }
+    {2}
+$$
+
+that is a measure of *intensity* of the economic activity.
+
+Four indicators of the generic $y$ system are derived further:
+
+-   **Size**:
+
+$$
+    \text{SIZE}(Y) = \frac{
+      \Bigl[ \sum\limits_{j} x_{i,j} \mid (i = y)\Bigr] +
+      \Bigl[ \sum\limits_{i} x_{i,j} \mid (j = y)\Bigr] }
+      {2 \cdot \sum X}
+$$ {#eq-size}
+
+where $\sum X$ is the sum of all $x_{i,j} \in X$.
+
+-   **Self-reliance**:
+
+$$
+    \text{SELF}(y)=w_{i,j} \mid (i=j=y)
+$$ {#eq-self}
+
+-   **Ubiquity**:
+
+$$
+  \text{UBIQ}(y) = \Bigl(\sum\limits_{j\neq i} b_{i,j}^2\Bigr)^{-1} \mid i = y
+$$ {#eq-ubiq}
+
+-   **Financial Parity**:
+
+$$ 
+\text{PRTY}(y) = \Bigl(\sum\limits_{i\neq j} a_{i,j}^2\Bigr)^{-1} \mid j = y
+$$ {#eq-prty}
+
+@eq-ubiq and @eq-prty are reciprocals of the Repeat Rates of $a_{i,j}$ and $b_{i,j}$, hence as demonstrated in Appendix XXX, these measures are specifications of the general function of "Ecological Diversity" and they measure how balanced is the diversification of the input-output fluxes. In particular, Ubiquity is a measure of balanced diversification in how much other ecosystems demand goods and services to $y$ and Financial Parity is a measure of balanced diversification in how $y$ allocates its budget of expenditure.
+
+### Interpretation
+
+-   SIZE is the proportion of money involved in that $y$ EcoSystem over the whole number of money circulated in the country. It ranges from 0 (the ES is not existent) to 1 (the ES coincides with the country). Since there are 14 countries, a balanced uniform value would be $.07$.
+
+-   SELF is the proportion of money that the $y$ EcoSystem trades with itself. It ranges from 0 (the ES is a pure fictional intermediary of other exchanges) to 1 (the ES always refute to trade with others).
+
+-   UBIQ is an indicator of how the ES serves the national economy when it does not exchange with itself. It ranges from 1 (exists as a mere supplier of another ES) to 14 (its a supplier of all other ES).
+
+-   PRTY is an indicator of how the ES buys a highly differentiated range of goods and services with no financial discrimination. A high value of it signals that investment in this ES is financially fair and does not favor specific groups of stakeholders. It ranges from 0 (it is only a buyer of another ES, i.e. financing it means to actually raise a lot of inequalities) to 1 (it buys from everybody, financing it it-s like giving money to everybody).
+
+### Dataviz
+
+```{r setup, include = FALSE}
+Functions = list()
+
+pacman::p_load(tidyverse,janitor,readxl,writexl,diverse,glue,ggimage,scales,ragg,hrbrthemes,cowplot,widyr,tidygraph,ggraph)
+
+Functions$matrix_preprocess <- function(matrix) {
+  matrix %>%
+    rename_with(~str_remove(.x,"CPA_")) %>%
+    rename_with(~str_replace(.x,"-|_","-")) %>%
+    rename_with(~str_replace(.x,"VL","L")) %>%
+    mutate(Buyer = `...1` %>%
+             str_remove("CPA_") %>%
+             str_replace("-|_","-") %>%
+             str_replace("VL","L"),
+           .before = `...1`
+           ) %>%
+    select(-`...1`) %>%
+    pivot_longer(cols = 2:last_col(),
+               names_to = "Seller",
+               values_to = "value") %>%
+    mutate(
+  Buyer = ifelse(Buyer %>% str_detect("A"),
+                 "A",
+                 Buyer),
+  Seller = ifelse(Seller %>% str_detect("A"),
+                 "A",
+                 Seller)
+) %>%
+  summarise(value = sum(value),
+            .by = c(Buyer, Seller))
+}
+```
+
+```{r include=FALSE}
+codex <- read_excel("Codex.xlsx")
+
+db_ATECO <- read_excel("italia 2015-2018.xlsx", 
+    sheet = "2015") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "Italy",
+         Year = "2015") %>%
+  add_row(read_excel("italia 2015-2018.xlsx", 
+    sheet = "2018") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "Italy",
+         Year = "2018")) %>%
+  add_row(read_excel("germania 2015-2018.xlsx", 
+    sheet = "2015") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "Germany",
+         Year = "2015")) %>%
+  add_row(read_excel("germania 2015-2018.xlsx", 
+    sheet = "2018") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "Germany",
+         Year = "2018")) %>%
+  add_row(read_excel("Francia 2015-2018.xlsx", 
+    sheet = "2015") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "France",
+         Year = "2015"))%>%
+  add_row(read_excel("Francia 2015-2018.xlsx", 
+    sheet = "2018") %>%
+  Functions$matrix_preprocess() %>%
+  mutate(Country = "France",
+         Year = "2018"))
+
+db_ECOS <- expand.grid(Buyer = codex$ATECO,Seller = codex$ATECO) %>%
+  left_join(db_ATECO) %>%
+  left_join(codex %>%
+              transmute(Buyer = ATECO,
+                        ECOS_Buyer = Ecosystem,
+                        w_Buyer = w)) %>%
+  left_join(codex %>%
+              transmute(Seller = ATECO,
+                        ECOS_Seller = Ecosystem,
+                        w_Seller = w)) %>%
+  transmute(Buyer = ECOS_Buyer,
+            Seller = ECOS_Seller,
+            value,
+            w_Buyer,
+            w_Seller,
+            Year,
+            Country) %>%
+  reframe(.by = c(Buyer, Seller, Year, Country),
+            value = sum(value*w_Buyer*w_Seller)) %>%
+    mutate(A = sum(value),
+           A_PRTY = sum(value) - value[Buyer == Seller],
+         .by = c(Buyer, Year, Country)) %>%
+    mutate(B = sum(value),
+           B_UBIQ = sum(value) - value[Buyer == Seller],
+         .by = c(Seller, Year, Country)) %>%
+  mutate(a = value/A,
+         b = value/B,
+         a_PRTY = case_when(
+           Buyer == Seller ~ 0,
+           TRUE ~ value / A_PRTY
+         ),
+         b_UBIQ = case_when(
+           Buyer == Seller ~ 0,
+           TRUE ~ value / B_UBIQ,
+         ),
+         w = (a+b)/2)
+
+db_ECOS %>%
+  filter(Seller == Buyer) %>%
+  reframe(SIZE = (A+B) / (sum(A)+sum(B)),
+            .by = c(Country,Year)
+            ) %>%
+  mutate(EcoS = rep(db_ECOS$Buyer %>% unique(),6),
+         .before = 1) -> results
+
+results %>%
+  left_join(
+     db_ECOS %>%
+       filter(Buyer == Seller) %>%
+       transmute(EcoS = Buyer,
+                 SELF = w,
+                 Country,
+                 Year)) %>%
+   left_join(
+     db_ECOS %>%
+       reframe(
+         UBIQ = 1/(sum(b_UBIQ^2)),
+         .by = c(Seller, Year, Country)) %>%
+       rename(EcoS = Seller)
+       ) %>%
+      left_join(
+     db_ECOS %>%
+       reframe(
+         PRTY = 1/(sum(a_PRTY^2)),
+         .by = c(Buyer, Year, Country)) %>%
+       rename(EcoS = Buyer)
+       ) -> results
+ 
+ results %>%
+  pivot_wider(
+    names_from = Year, 
+  values_from = c(UBIQ,PRTY,SIZE,SELF),
+  names_sep = "_"
+  ) %>%
+  mutate(Country = Country %>%
+           factor(levels = c("Germany","France","Italy"))) -> results_pivoted
+```
+
+```{r echo=FALSE}
+results %>%
+  select(where(is.numeric)) %>%
+  cor() %>%
+  corrplot::corrplot(method="color",
+                     type="upper",
+                     addCoef.col = "goldenrod", # text color
+                     tl.col="black", tl.srt=45,
+                     cl.pos = "n",
+                     tl.cex = 1)
+```
+
+```{r}
+plot_grid(
+results_pivoted %>%
+  ggplot() +
+  geom_point(aes(x = SELF_2018,
+                   y = SIZE_2018,
+                   color = Country),
+             size = 3.5) +
+  scale_color_manual(values = c("gold","blue4","chartreuse")) +
+   theme_dark(base_size = 25) +
+    theme(
+      legend.position = "top",
+#    legend.position = c(0.79, 1.28),
+    legend.background = element_rect(fill = "transparent"),
+    legend.title = element_blank(),
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    strip.text = element_text(size = 20),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(-10,-15,-15,-15)
+  ) +
+#  xlim(0,.3) +
+#  ylim(0,.3) +
+#  ggtitle("Shift 2015-2018") +
+  scale_y_continuous(breaks =
+                       c("0" = 0,
+                         ".15" = 0.15,
+                         ".3" = 0.3),
+                     limits = c(0,.3)) +
+    scale_x_continuous(breaks =
+                       c("0" = 0,
+                         ".15" = 0.15,
+                         ".3" = 0.3),
+                       limits = c(0,.3)) +
+  xlab("Self-reliance") +
+  ylab("System Size") +
+  facet_wrap(~ EcoS,
+             nrow = 7,
+             ncol = 2),
+results_pivoted %>%
+  ggplot() +
+  geom_point(aes(x = UBIQ_2018,
+                   y = PRTY_2018,
+                   color = Country),
+             size = 3.5) +
+  scale_color_manual(values = c("gold","blue4","springgreen1")) +
+   theme_dark(base_size = 25) +
+    theme(
+      legend.position = "top",
+#    legend.position = c(0.79, 1.28),
+    legend.background = element_rect(fill = "transparent"),
+    legend.title = element_blank(),
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    strip.text = element_text(size = 20),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(-10,-15,-15,-15)
+  ) +
+#  xlim(0,.3) +
+#  ylim(0,.3) +
+#  ggtitle("Shift 2015-2018") +
+  scale_y_continuous(breaks =
+                       c("1" = 1,
+                         "7" = 7,
+                         "13" = 13),
+                     limits = c(1,13)) +
+    scale_x_continuous(breaks =
+                       c("1" = 1,
+                         "7" = 7,
+                         "13" = 13),
+                     limits = c(1,13)) +
+  xlab("Economic Ubiquity") +
+  ylab("Financial Parity") +
+  facet_wrap(~ EcoS,
+             nrow = 7,
+             ncol = 2),
+ncol=2)
+
+ggsave("prova.png",
+       width = 14,
+       height = 16, units = "in", dpi = 300)
+
+```
+
+## Euclidian distances
+
+Euclidean distances in two spaces:
+
+-   Space SELF-SIZE:
+
+    $$
+    d_{SS} = \sqrt{\sum\limits_{Country} \left[ SIZE(\underset{Country}{y}) - SELF(\underset{Country}{y}) \right]^2}
+    $$
+
+-   Space UBIQ-PRTY:
+
+    $$
+    d_{UP} = \sqrt{\sum\limits_{Country} \left[ UBIQ(\underset{Country}{y}) - PRTY(\underset{Country}{y}) \right]^2}
+    $$
+
+### Computation
+
+```{r}
+results %>%
+  filter(Year == 2015) %>%
+  select(-c(PRTY,UBIQ)) %>%
+  pivot_longer(cols = c(SIZE,SELF)) %>%
+  group_by(EcoS) %>%
+  widyr::pairwise_dist(Country,name,value,
+                       upper = FALSE) %>%
+  summarise(d_SS = sum(distance)) %>%
+  left_join(
+    results %>%
+  filter(Year == 2015) %>%
+  select(-c(SIZE,SELF)) %>%
+  pivot_longer(cols = c(PRTY,UBIQ)) %>%
+  group_by(EcoS) %>%
+  widyr::pairwise_dist(Country,name,value,
+                       upper = FALSE) %>%
+  summarise(d_UP = sum(distance))) %>%
+  writexl::write_xlsx(
+    "Euclidean_Distances.xlsx"
+  )
+```
+
+## Networks
+
+```{r}
+
+db_ECOS %>%
+  filter(Year == 2015) %>%
+      mutate(Rel = pmap_chr(list(Seller, Buyer), ~paste(sort(c(...)), collapse = "_")), .before = 1) %>%
+  summarise(w = sum(value),
+            .by = c(Rel,Country)) %>%
+  mutate(w = w/sum(w),
+         .by = Country
+         ) %>%
+  separate(Rel, into = c("node1", "node2"), sep = "_") %>%
+  adorn_rounding(4) %>%
+  filter(node1 != node2) %>%
+  arrange(-w) -> network.db
+```
+
+### Italy
+
+```{r}
+network.db %>%
+  mutate(w = w^2) %>%
+  mutate(w = w/sum(w),
+         .by = Country) %>%
+    adorn_rounding(4) %>%
+#  filter(Country == "Italy") %>%
+  tidygraph::as_tbl_graph(directed = FALSE) %>%
+  ggraph(layout = 'linear',
+         circular = T) + 
+    geom_edge_fan(aes(alpha = w),
+                  show.legend = FALSE) + 
+    geom_node_point() + 
+  geom_node_text(aes(label = name), 
+                 colour = 'red', size=6,
+                  show.legend = FALSE) +
+    facet_edges(~Country) + 
+    theme_graph(foreground = 'steelblue', fg_text_colour = 'white')
+```
+
+## OLD Figures
+
+```{r echo=FALSE, fig.width=12, fig.height=6}
+results_pivoted %>%
+  ggplot() +
+  geom_segment(aes(x = SELF_2015, xend = SELF_2018,
+                   y = SIZE_2015, yend = SIZE_2018,
+                   color = Country),
+                  arrow = arrow(length = unit(.1, "cm"),
+                                angle = 25,
+                                type="closed"),
+              linewidth = 1.6,
+              lineend = "round",
+              linejoin = "mitre") +
+  scale_color_manual(values = c("gold","blue4","springgreen1")) +
+   theme_dark(base_size = 25) +
+    theme(
+    legend.position = c(0.79, 1.18),
+    legend.background = element_rect(fill = "transparent"),
+    legend.title = element_blank(),
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    strip.text = element_text(size = 13)
+  ) +
+  ggtitle("Shift 2015-2018") +
+  xlab("Self-reliance") +
+  ylab("System Size") +
+  facet_wrap(~ EcoS,
+             nrow = 2,
+             ncol = 7)
+```
+
+```{r echo=FALSE, fig.width=12, fig.height=6}
+results_pivoted %>%
+  ggplot() +
+  geom_segment(aes(x = UBIQ_2015, xend = UBIQ_2018,
+                   y = PRTY_2015, yend = PRTY_2018,
+                   color = Country),
+                  arrow = arrow(length = unit(.1, "cm"),
+                                angle = 25,
+                                type="closed"),
+              linewidth = 1.6,
+              lineend = "round",
+              linejoin = "mitre") +
+  scale_color_manual(values = c("gold","blue4","springgreen1")) +
+  theme_dark(base_size = 25) +
+    theme(
+    legend.position = c(0.80, 1.18),
+    legend.background = element_rect(fill = "transparent"),
+    legend.title = element_blank(),
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    strip.text = element_text(size = 13)
+  ) +
+  ggtitle("Shift 2015-2018") +
+  xlab("Economic Ubiquity") +
+  ylab("Financial Parity") +
+  facet_wrap(~ EcoS,
+             nrow = 2,
+             ncol = 7)
+```

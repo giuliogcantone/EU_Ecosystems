@@ -9,7 +9,7 @@ editor: visual
 ```{r setup}
 Functions = list()
 
-pacman::p_load(tidyverse,janitor,readxl,writexl,diverse,glue)
+pacman::p_load(tidyverse,janitor,readxl,writexl,diverse,glue,ggimage,ggthemes,extrafont,ggtext,ragg,hrbrthemes)
 
 Functions$matrix_preprocess <- function(matrix) {
   matrix %>%
@@ -75,7 +75,6 @@ Functions$diversity <- function(db,entity,trait,value,d_matrix){
 ## Import data
 
 ```{r}
-results = list()
 codex <- read_excel("Codex.xlsx")
 
 db_ATECO <- read_excel("italia 2015-2018.xlsx", 
@@ -146,6 +145,11 @@ db_ECOS %>%
   as.matrix() -> d_ECOS
 writexl::write_xlsx(d_ECOS %>% as_tibble(rownames = "Ecosystem"),"dist_ECOS.xlsx")
 
+naive_d_ECOS <- matrix(1,
+                       nrow=nrow(d_ECOS),
+                       ncol=ncol(d_ECOS))
+diag(naive_d_ECOS) <- 0
+
 db_ATECO %>%
   select(Buyer,Seller,value) %>%
   summarise(.by = c(Buyer, Seller),
@@ -163,6 +167,8 @@ writexl::write_xlsx(d_ATECO %>% as_tibble(rownames = "ATECO"),"dist_ATECO.xlsx")
 ## Automated tables: Selling
 
 ```{r}
+
+results = list()
 
 results$Seller_div = tibble(
   Year = NA,
@@ -218,8 +224,145 @@ for (Y in db_ECOS$Year %>% unique) {
   }
 }
 
+G = NULL
+Y = NULL
+
 results$Buyer_div %>%
   drop_na() %>%
   select(-RS) %>%
   write_xlsx("Buyer_Diversity.xlsx")
+```
+
+# Figures
+
+```{r}
+results$Seller_div %>%
+  select(-RS) %>%
+  rename(Seller_Diversification = True_RS,
+         Ecosystem = Seller) %>%
+  left_join(results$Buyer_div %>%
+              select(-RS) %>%
+  rename(Buyer_Diversification = True_RS,
+         Ecosystem = Buyer
+         )) %>%
+  left_join(
+(db_ECOS %>%
+  pivot_longer(cols = c(Buyer,Seller),
+               values_to = "Ecosystem") %>%
+   mutate(Self = value/sum(value),
+         .by = c(Country,Year,Ecosystem)) %>%
+  filter(Self == lag(Self,1),
+         value > 0) %>%
+  select(-value, -name)
+)) %>%
+  mutate(Country = Country %>% factor(levels = c("Germany",
+                                                 "France",
+                                                 "Italy"))) %>%
+  drop_na() %>%
+  adorn_rounding(3) -> results$full
+```
+
+```{r}
+pacman::p_load(ggimage)
+
+results$full %>%
+  select(where(is.numeric)) %>%
+  cor() %>%
+  corrplot::corrplot(method="color",
+                     type="upper",
+                     addCoef.col = "goldenrod", # text color
+                     tl.col="black", tl.srt=45,
+                     cl.pos = "n",
+                     tl.cex = 1)
+  
+
+results$full %>%
+    ggplot() +
+  geom_label(aes(x = Seller_Diversification,
+                y = Buyer_Diversification,
+                label = Ecosystem,
+                fill = Self),
+             color = "black", alpha = 0.5,
+            size = 1.5) +
+  scale_y_continuous(position = "right") +
+  scale_fill_gradient(low="gold", high="magenta") +
+  theme_dark() +
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.box.margin = margin(-5, 0, -5, 0),
+    strip.placement = 'outside'
+  ) +
+  guides(fill = guide_colorbar(barwidth = 30)) +
+  xlab("Economic Ubiquity") +
+  ylab("Financial Equality") +
+  facet_grid(Country ~ Year, switch = "y")
+  
+    
+ggsave("analysis.png")
+```
+
+```{r}
+results$full %>%
+  rename(Ubiquity = Seller_Diversification,
+         Equality = Buyer_Diversification) %>%
+  pivot_wider(
+    names_from = Year, 
+  values_from = c(Ubiquity,Equality,Self),
+  names_sep = "_"
+  ) %>%
+  ggplot() +
+  theme_economist() +
+#  geom_segment(aes(x=x, xend=x, y=value1, yend=value2), color="grey") +
+  geom_point(aes(x=Ubiquity_2015, y=Country,
+                 size = Self_2015), color="orange",) +
+  geom_point(aes(x=Ubiquity_2018, y=Country,
+                 size = Self_2018), color="purple") +
+  scale_y_discrete(limits = c("Italy", "France", "Germany"))+
+  theme(
+    axis.title.y = element_blank(),
+    legend.position = "none",
+  ) +
+  xlab("Economic Ubiquity") +
+  facet_wrap(~ Ecosystem,
+             nrow = 7,
+             ncol = 2)
+  
+  
+ggsave("lollipop.png")
+```
+
+```{r}
+results$full %>%
+  rename(Ubiquity = Seller_Diversification,
+         Equality = Buyer_Diversification) %>%
+  pivot_wider(
+    names_from = Year, 
+  values_from = c(Ubiquity,Equality,Self),
+  names_sep = "_"
+  ) %>%
+  ggplot() +
+  geom_segment(aes(x = Equality_2015, xend = Equality_2018,
+                   y = Ubiquity_2015, yend = Ubiquity_2018,
+                   color = Country),
+                  arrow = arrow(length = unit(.06, "cm"),
+                                angle = 25,
+                                type="closed"),
+              linewidth = 1.2,
+              lineend = "round",
+              linejoin = "mitre") +
+  scale_color_manual(values = c("gold","blue4","springgreen1")) +
+  theme_dark() +
+    theme(
+    legend.position = "top",
+    legend.title = element_blank()
+  ) +
+  xlab("Shift in Financial Equality (2015-18)") +
+  ylab("Shift in Economic Ubiquity (2015-18)") +
+  facet_wrap(~ Ecosystem,
+             nrow = 2,
+             ncol = 7)
+
+ggsave("arrows.png",
+        width = 10, height = 4)
 ```

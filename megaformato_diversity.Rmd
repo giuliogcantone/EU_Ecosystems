@@ -1,0 +1,30 @@
+---
+title: "Untitled"
+author: 'Giulio G: Cantone'
+date: "2024-01-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+tibble(l = c("","Hyper-Sensitive Diversity","Variety","Disparity",
+             "Inverse\nBalance","Effective\nDiversity","Dominance",""),
+       q = c(-2,-2,0,0,2,2,4,4),
+       z = c(0,.5,.06,.5,.06,.5,.5,1)) %>%
+  ggplot(aes(z,q)) +
+  geom_text(aes(label = l), size = 8,
+            family = "xkcd") +
+  theme_test() +  # Use a minimal theme (you can customize this as needed)
+  labs(x = expression(Sigma(Z)),
+       y = "q") +  # Use expression for the Greek letter Sigma
+  scale_x_continuous(
+    breaks = c(0, 1),  # Set the x-axis breaks
+    labels = c(expression(abs(I)), expression(abs(I)^2))  # Set corresponding labels
+  ) +
+  scale_y_continuous(
+    breaks = c(-2, 0, 2, 4),
+    labels = c(expression(-infinity), "0","2", expression(infinity))
+  ) +
+  theme(text = element_text(size = 40, family = "xkcd"),
+        axis.title.y = element_text(angle = 0, vjust = 0.5))
+```
+
